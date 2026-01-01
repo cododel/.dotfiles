@@ -122,7 +122,10 @@ analyze_diff_semantics() {
 
   while read -r added deleted file; do
     [[ -z "$file" ]] && continue
-    local weight=1
+    # Handle binary files (git numstat returns '-' for binary changes)
+    [[ "$added" == "-" ]] && added=0
+    [[ "$deleted" == "-" ]] && deleted=0
+    
     case "$file" in
       *.sh|*.js|*.py|*.lua|*.ts|*.go|*.rs|*.c|*.cpp|*.h)
         logic_score=$((logic_score + added + deleted))
@@ -189,48 +192,48 @@ parse_args() {
 }
 
 capture_git_state() {
-  local diff_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-diff.XXXXXX")
-  local status_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-status.XXXXXX")
-  local numstat_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-numstat.XXXXXX")
-  local stat_raw_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-stat-raw.XXXXXX")
-  local summary_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-summary.XXXXXX")
-  local history_file=$(mktemp "${TMPDIR:-/tmp}/ai-commit-history.XXXXXX")
-  TMP_ITEMS+=("$diff_file" "$status_file" "$numstat_file" "$stat_raw_file" "$summary_file" "$history_file")
+  DIFF_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-diff.XXXXXX")
+  STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-status.XXXXXX")
+  NUMSTAT_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-numstat.XXXXXX")
+  STAT_RAW_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-stat-raw.XXXXXX")
+  SUMMARY_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-summary.XXXXXX")
+  HISTORY_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-history.XXXXXX")
+  TMP_ITEMS+=("$DIFF_FILE" "$STATUS_FILE" "$NUMSTAT_FILE" "$STAT_RAW_FILE" "$SUMMARY_FILE" "$HISTORY_FILE")
 
   # Compact diff with minimal context and no space noise
-  git diff --cached -U1 --no-prefix --ignore-space-change > "$diff_file" &
+  git diff --cached -U1 --no-prefix --ignore-space-change > "$DIFF_FILE" &
   local p1=$!
   # File status (A, M, D, R...)
-  git diff --cached --name-status > "$status_file" &
+  git diff --cached --name-status > "$STATUS_FILE" &
   local p2=$!
   # Exact line counts per file
-  git diff --cached --numstat > "$numstat_file" &
+  git diff --cached --numstat > "$NUMSTAT_FILE" &
   local p3=$!
   # Full stat for weighting
-  git diff --cached --stat > "$stat_raw_file" &
+  git diff --cached --stat > "$STAT_RAW_FILE" &
   local p4=$!
   # Single line summary
-  git diff --cached --stat | tail -1 > "$summary_file" &
+  git diff --cached --stat | tail -1 > "$SUMMARY_FILE" &
   local p5=$!
 
   if $USE_HISTORY; then
-    git log -"$HISTORY_LIMIT" --oneline > "$history_file" &
+    git log -"$HISTORY_LIMIT" --oneline > "$HISTORY_FILE" &
   fi
   local p6=$!
 
   wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"
 
-  if [[ ! -s "$diff_file" && ! -s "$status_file" ]]; then
+  if [[ ! -s "$DIFF_FILE" && ! -s "$STATUS_FILE" ]]; then
     echo "⚠️  No staged changes to commit." >&2
     exit 0
   fi
 
-  DIFF_COMPACT=$(<"$diff_file")
-  DIFF_STATUS=$(<"$status_file")
-  DIFF_NUMSTAT=$(<"$numstat_file")
-  DIFF_STAT_RAW=$(<"$stat_raw_file")
-  DIFF_STAT_SUMMARY=$(<"$summary_file")
-  [[ -s "$history_file" ]] && HISTORY=$(<"$history_file")
+  DIFF_COMPACT=$(<"$DIFF_FILE")
+  DIFF_STATUS=$(<"$STATUS_FILE")
+  DIFF_NUMSTAT=$(<"$NUMSTAT_FILE")
+  DIFF_STAT_RAW=$(<"$STAT_RAW_FILE")
+  DIFF_STAT_SUMMARY=$(<"$SUMMARY_FILE")
+  [[ -s "$HISTORY_FILE" ]] && HISTORY=$(<"$HISTORY_FILE")
 
   analyze_diff_semantics "$DIFF_NUMSTAT"
 
@@ -272,6 +275,10 @@ summarize_changes() {
   if [[ -f "$VALID_SCOPES_PATH" ]]; then
     valid_scopes=$(cat "$VALID_SCOPES_PATH")
   fi
+  # Local project scope discovery
+  if [[ -f ".ai-commit-scopes.json" ]]; then
+    valid_scopes=$(cat ".ai-commit-scopes.json")
+  fi
 
   local prompt=$(cat <<EOF
 You are a Technical Architect. Analyze the git diff and metadata.
@@ -302,10 +309,10 @@ EOF
 
   local payload=$(jq -n \
     --arg p "$prompt" \
-    --arg dc "$DIFF_COMPACT" \
-    --arg ds "$DIFF_STATUS" \
-    --arg dn "$DIFF_NUMSTAT" \
-    --arg dss "$DIFF_STAT_SUMMARY" \
+    --rawfile dc "$DIFF_FILE" \
+    --rawfile ds "$STATUS_FILE" \
+    --rawfile dn "$NUMSTAT_FILE" \
+    --rawfile dss "$SUMMARY_FILE" \
     --argjson vs "$valid_scopes" \
     --argjson sw "$SEMANTIC_WEIGHTS" \
     '{instruction:$p, context:{diff_compact:$dc, diff_status:$ds, diff_numstat:$dn, diff_stat_summary:$dss, valid_scopes:$vs, semantic_weights:$sw}}')
@@ -356,9 +363,12 @@ Constraints for Gemini (The Generator):
 EOF
 )
 
+  # Save RAW_SUMMARY to a temporary file to use with --rawfile
+  local summary_tmp=$(mktemp "${TMPDIR:-/tmp}/ai-commit-raw-summary.XXXXXX")
+  echo "$RAW_SUMMARY" > "$summary_tmp"
+  TMP_ITEMS+=("$summary_tmp")
 
-
-  local payload=$(jq -n --arg p "$prompt" --arg s "$RAW_SUMMARY" --arg h "$HISTORY" --arg st "$DIFF_STAT_RAW" \
+  local payload=$(jq -n --arg p "$prompt" --rawfile s "$summary_tmp" --arg h "$HISTORY" --rawfile st "$STAT_RAW_FILE" \
     '{instruction:$p, context:{technical_manifest:$s, recent_history:$h, diff_stat:$st}}')
   
   local payload_size=${#payload}
@@ -369,6 +379,7 @@ EOF
     echo "❌ Error: Gemini returned empty response." >&2
   fi
 }
+
 
 validate_response() {
   local cleaned="$1"
