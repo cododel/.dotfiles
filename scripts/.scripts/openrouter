@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Constants
+API_URL="https://openrouter.ai/api/v1/chat/completions"
+MODEL="google/gemini-2.5-flash-lite"
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [--model <model>] <prompt...>" >&2
+    exit 1
+}
+
+# Function to build JSON payload
+build_payload() {
+    local prompt="$1"
+    local model="$2"
+    jq -n --arg p "$prompt" --arg m "$model" \
+        '{
+            "model": $m,
+            "messages": [{"role": "user", "content": $p}]
+        }'
+}
+
+# Function to make API call and parse response
+call_api() {
+    local payload="$1"
+    
+    if [ -z "$OPENROUTER_API_KEY" ]; then
+        echo "Error: OPENROUTER_API_KEY environment variable is not set" >&2
+        echo "Please set your API key: export OPENROUTER_API_KEY='your-key'" >&2
+        exit 1
+    fi
+    
+    curl -s "$API_URL" \
+        -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "$payload" | \
+    jq -r '.choices[0].message.content // empty'
+}
+
+# Function to parse arguments
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --model)
+                MODEL="$2"
+                shift 2
+                ;;
+            -*)
+                echo "Unknown option: $1" >&2
+                usage
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    PROMPT="$*"
+    [ -z "$PROMPT" ] && usage
+}
+
+# Main script
+parse_args "$@"
+
+payload=$(build_payload "$PROMPT" "$MODEL")
+response=$(call_api "$payload")
+
+if [ -n "$response" ]; then
+    echo "$response"
+else
+    echo "Error: No response received from API" >&2
+    exit 1
+fi

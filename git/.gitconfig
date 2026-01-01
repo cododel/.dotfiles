@@ -8,3 +8,5 @@
 	required = true
 [pull]
 	rebase = false
+[alias]
+	ai-commit = "!~/.scripts/ai-commit.sh"

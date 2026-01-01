@@ -1,3 +1,4 @@
 #!/bin/bash
+shopt -s extglob
 
-stow */
+stow !(_shared)/
