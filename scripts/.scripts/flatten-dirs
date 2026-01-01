@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Check if directory is provided
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <directory>"
+    exit 1
+fi
+
+# Check if directory exists
+if [ ! -d "$1" ]; then
+    echo "Error: Directory '$1' does not exist"
+    exit 1
+fi
+
+# Convert to absolute path
+target_dir=$(realpath "$1")
+
+# Find all files in subdirectories and move them to root
+find "$target_dir" -type f -mindepth 2 | while read -r file; do
+    filename=$(basename "$file")
+    dest="$target_dir/$filename"
+    
+    # Handle filename conflicts
+    counter=1
+    while [ -f "$dest" ]; do
+        base="${filename%.*}"
+        ext="${filename##*.}"
+        if [ "$base" = "$ext" ]; then
+            # File has no extension
+            dest="$target_dir/${base}_${counter}"
+        else
+            # File has extension
+            dest="$target_dir/${base}_${counter}.${ext}"
+        fi
+        ((counter++))
+    done
+    
+    # Move the file
+    mv "$file" "$dest"
+    echo "Moved: $file -> $dest"
+done
+
+# Remove empty directories
+find "$target_dir" -type d -mindepth 1 -empty -delete
+
+echo "Directory structure flattened"

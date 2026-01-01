@@ -1,0 +1,4 @@
+#!/bin/bash
+
+./vendor/bin/sail artisan make:filament-user --email websmithcode@gmail.com --name admin --password admin
+

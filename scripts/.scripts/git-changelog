@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+#     git log "$(git describe --tags --abbrev=0)"..HEAD --pretty=format:"%s%n%b" | sed 's/:[^:]*: //g'
+# else
+#     git log --pretty=format:"%s%n%b" | sed 's/:[^:]*: //g'
+# fi
+
+
+# generateChangelog() {
+#     local changelog="# Changelog\n\n"
+#
+#     if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+#         changelog+="## $(git describe --tags --abbrev=0)\n"
+#         changelog+="[$(git log -1 --format=%ad --date=short "$(git describe --tags --abbrev=0)")]\n\n"
+#         changelog+="$(git log "$(git describe --tags --abbrev=0)"..HEAD --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+#     else
+#         changelog+="$(git log --pretty=format:"## %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+#     fi
+#
+#     echo -e "$changelog"
+# }
+# generateChangelog() {
+#     local changelog="# Changelog\n\n"
+#
+#     # Fetch all tags sorted by creation date (ascending)
+#     local tags=$(git tag --sort=creatordate)
+#
+#     if [ -n "$tags" ]; then
+#         local previous_tag=""
+#         while IFS= read -r tag; do
+#             if [ -z "$previous_tag" ]; then
+#                 # First tag: commits from the beginning to this tag
+#                 changelog+="## $tag\n"
+#                 changelog+="[$(git log -1 --format=%ad --date=short "$tag")]\n\n"
+#                 changelog+="$(git log "$tag" --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n\n"
+#             else
+#                 # Subsequent tags: commits between previous_tag and current tag
+#                 changelog+="## $tag\n"
+#                 changelog+="[$(git log -1 --format=%ad --date=short "$tag")]\n\n"
+#                 changelog+="$(git log "$previous_tag".."$tag" --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n\n"
+#             fi
+#             previous_tag="$tag"
+#         done <<< "$tags"
+#
+#         # Commits after the latest tag to HEAD
+#         changelog+="## Unreleased\n"
+#         changelog+="[$(git log -1 --format=%ad --date=short HEAD)]\n\n"
+#         changelog+="$(git log "$previous_tag"..HEAD --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+#     else
+#         # No tags: list all commits
+#         changelog+="$(git log --pretty=format:"## %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+#     fi
+#
+#     echo -e "$changelog"
+# }
+
+
+generateChangelog() {
+    local changelog="# Changelog\n\n"
+
+    # Initialize flags
+    local releases=false
+    local last_release=false
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --releases)
+                releases=true
+                shift
+                ;;
+            --last-release)
+                last_release=true
+                shift
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Usage: generateChangelog [--releases] [--last-release]"
+                return 1
+                ;;
+        esac
+    done
+
+    if [ "$releases" = true ] && [ "$last_release" = true ]; then
+        echo "Error: --releases and --last-release cannot be used together."
+        echo "Usage: generateChangelog [--releases] [--last-release]"
+        return 1
+    fi
+
+    if [ "$releases" = true ]; then
+        # Fetch all tags sorted by creation date (descending)
+        local tags=$(git tag --sort=-creatordate)
+
+        if [ -n "$tags" ]; then
+            local previous_tag=""
+            while IFS= read -r tag; do
+                if [ -z "$previous_tag" ]; then
+                    # First tag: commits from this tag to HEAD
+                    changelog+="## $tag\n"
+                    changelog+="[$(git log -1 --format=%ad --date=short "$tag")]\n\n"
+                    changelog+="$(git log "$tag"..HEAD --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n\n"
+                else
+                    # Subsequent tags: commits between current tag and previous tag
+                    changelog+="## $previous_tag\n"
+                    changelog+="[$(git log -1 --format=%ad --date=short "$previous_tag")]\n\n"
+                    changelog+="$(git log "$tag".."$previous_tag" --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n\n"
+                fi
+                previous_tag="$tag"
+            done <<< "$tags"
+
+            # Commits after the latest tag to HEAD
+            changelog+="## Unreleased\n"
+            changelog+="[$(git log -1 --format=%ad --date=short HEAD)]\n\n"
+            changelog+="$(git log "$previous_tag"..HEAD --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+        else
+            # No tags: list all commits
+            changelog+="$(git log --pretty=format:"## %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+        fi
+    elif [ "$last_release" = true ]; then
+        # Output commits up to the latest tag
+        if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            local latest_tag=$(git describe --tags --abbrev=0)
+            changelog+="## $latest_tag\n"
+            changelog+="[$(git log -1 --format=%ad --date=short "$latest_tag")]\n\n"
+            changelog+="$(git log "$latest_tag"..HEAD --pretty=format:"### %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+        else
+            # No tags: list all commits
+            changelog+="$(git log --pretty=format:"## %s%n[%ad]%n%b" --date=short | sed 's/:[^:]*: //g')\n"
+        fi
+    else
+        # Default: list all commits without grouping
+        changelog+="$(git log --pretty=format:"## %s%n%b" | sed 's/:[^:]*: //g')\n"
+    fi
+
+    echo -e "$changelog"
+}
+generateChangelog
+
+

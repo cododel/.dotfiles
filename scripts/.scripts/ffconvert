@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Default values
+RE_ENCODE=0
+FORCE=0
+GLOB_PATTERN=""
+OUTPUT_EXT=""
+OUTPUT_DIR=""
+
+usage() {
+    echo "Usage: $0 --input <glob> --format <ext> --dir <path> [options]"
+    echo ""
+    echo "A utility for batch converting files with FFmpeg."
+    echo ""
+    echo "Required arguments:"
+    echo "  --input <glob>      Glob pattern for input files (e.g., '*.mov'). Quote it."
+    echo "  --format <ext>      Output format/extension (e.g., 'mp4')."
+    echo "  --dir <path>        Path to the output directory."
+    echo ""
+    echo "Options:"
+    echo "  --re-encode         Re-encode video to H.264 and audio to AAC. Default is to copy streams (-c copy)."
+    echo "  --force             Overwrite existing files in the output directory. Default is to skip."
+    echo "  -h, --help          Show this help message."
+    exit 1
+}
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --input) GLOB_PATTERN="$2"; shift ;;
+        --format) OUTPUT_EXT="$2"; shift ;;
+        --dir) OUTPUT_DIR="$2"; shift ;;
+        --re-encode) RE_ENCODE=1 ;;
+        --force) FORCE=1 ;;
+        -h|--help) usage ;;
+        *) echo "Unknown parameter passed: $1"; usage ;;
+    esac
+    shift
+done
+
+if [ -z "$GLOB_PATTERN" ] || [ -z "$OUTPUT_EXT" ] || [ -z "$OUTPUT_DIR" ]; then
+    echo "Error: Missing required arguments."
+    usage
+fi
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Enable nullglob to avoid errors if the pattern finds no files
+shopt -s nullglob
+files=($GLOB_PATTERN)
+
+if [ ${#files[@]} -eq 0 ]; then
+    echo "No files matching '$GLOB_PATTERN' found."
+    exit 1
+fi
+
+CONVERSION_TYPE="stream copy (-c copy)"
+FFMPEG_ARGS="-c copy"
+if [ "$RE_ENCODE" -eq 1 ]; then
+    CONVERSION_TYPE="re-encoding (-c:v libx264 -c:a aac)"
+    FFMPEG_ARGS="-c:v libx264 -c:a aac -b:a 192k"
+fi
+
+echo "The following files will be converted:"
+for file in "${files[@]}"; do
+    if [ -f "$file" ]; then
+        base="${file%.*}"
+        echo "  - $file => $OUTPUT_DIR/$base.$OUTPUT_EXT"
+    fi
+done
+
+echo ""
+echo "Conversion mode: $CONVERSION_TYPE"
+if [ "$FORCE" -eq 1 ]; then
+    echo "Overwrite mode: enabled (--force)"
+fi
+echo ""
+echo "Proceed with conversion? (y/n)"
+read -r response
+
+if [[ "$response" =~ ^[Yy]$ ]]; then
+    echo "Starting conversion..."
+    for file in "${files[@]}"; do
+        if [ -f "$file" ]; then
+            base="${file%.*}"
+            output="$OUTPUT_DIR/$base.$OUTPUT_EXT"
+
+            if [ "$FORCE" -eq 0 ] && [ -f "$output" ]; then
+                echo "Output '$output' already exists, skipping '$file'."
+                continue
+            fi
+
+            echo "Converting: $file -> $output"
+            # Use -y to handle ffmpeg's own overwrite prompt if --force is used
+            if ffmpeg -hide_banner -loglevel error -i "$file" $FFMPEG_ARGS "$output" -y; then
+                echo "Done: $output"
+            else
+                echo "Error converting '$file'."
+            fi
+        fi
+    done
+    echo "Conversion complete."
+else
+    echo "Aborted."
+fi
+
+shopt -u nullglob

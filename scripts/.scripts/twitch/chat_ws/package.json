@@ -1,0 +1,13 @@
+{
+  "name": "chat_ws",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "tmi.js": "^1.8.5"
+  },
+  "scripts": {
+    "start": "node app.js"
+  }
+}

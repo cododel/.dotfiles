@@ -1,0 +1,146 @@
+#!/bin/bash
+
+chars="abcdefghijklmnopqrstuvwxyz"
+consonants='bcdfghjklmnpqrstvwxyz'
+vowels='aeiou'
+digits='0123456789'
+special='()`~!@#$*-+={}[]:;,. ?/'
+
+length=16
+include_uppercase=false
+include_special=false
+generate_memorable=false
+
+__help() {
+    cat << EOF
+Usage: $(basename $0) [-n <length>] [-u] [-d] [-s] [-m] [-h]
+
+Options:
+  -n <length>      Set the length of the random string (default is 16)
+  -u               Include uppercase letters in the random string
+  -d               Include digits in the random string
+  -s               Include special characters in the random string
+  -m               Generate a memorable password
+  -h               Show this help message and exit
+EOF
+    exit 0
+}
+
+__generate_random_password() {
+    local length=${1:-12}
+    local password=""
+    local available_chars="$chars"
+
+    for ((i=0; i<length; i++)); do
+        password+=${available_chars:RANDOM%${#available_chars}:1}
+    done
+
+    echo "$password"
+}
+
+__generate_memorable_password() {
+    local length=${1:-12}
+    local password=""
+    local available_consonants="$consonants"
+    local available_vowels="$vowels"
+
+
+    for ((i=0; i<length; i++)); do
+        if (( i % 2 == 0 )); then
+            password+=${available_consonants:RANDOM%${#available_consonants}:1}
+        else
+            password+=${available_vowels:RANDOM%${#available_vowels}:1}
+        fi
+    done
+
+    echo "$password"
+}
+
+while getopts "n:udsmh" opt; do
+    case $opt in
+        n)
+            length="$OPTARG"
+            ;;
+        u)
+            include_uppercase=true
+            ;;
+        d)
+            include_digits=true
+            ;;
+        s)
+            include_special=true
+            ;;
+        m)
+            generate_memorable=true
+            ;;
+        h)
+            __help
+            exit 0
+            ;;
+        *)
+            __help
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$generate_memorable" = true ]; then
+    res=$(__generate_memorable_password "$length")
+else
+    res=$(__generate_random_password "$length")
+fi
+
+function handle_special_chars() {
+    local num_special_replacements=$((length * (15 + RANDOM % 16) / 100))
+    if [ "$num_special_replacements" -eq 0 ]; then
+        num_special_replacements=1
+    fi
+
+    for ((i=0; i<num_special_replacements; i++)); do
+        local index=$((RANDOM % length))
+        local random_special_char=${special:RANDOM%${#special}:1}
+        res="${res:0:index}$random_special_char${res:index+1}"
+    done
+}
+
+function handle_uppercase_chars() {
+    local num_uppercase_replacements=$((length * (15 + RANDOM % 16) / 100))
+    if [ "$num_uppercase_replacements" -eq 0 ]; then
+        num_uppercase_replacements=1
+    fi
+
+    for ((i=0; i<num_uppercase_replacements; i++)); do
+        local index=$((RANDOM % length))
+        local random_uppercase_char=$(echo "$chars" | tr '[:lower:]' '[:upper:]' | cut -c $((RANDOM % 26 + 1)))
+        res="${res:0:index}$random_uppercase_char${res:index+1}"
+    done
+}
+
+function handle_digits() {
+    local chance=1/10
+
+    local num_digits_replacements=$((length * chance))
+    if [ "$num_digits_replacements" -eq 0 ]; then
+        num_digits_replacements=1
+    fi
+
+    for ((i=0; i<num_digits_replacements; i++)); do
+        local index=$((RANDOM % length))
+        local random_digit=${digits:RANDOM%${#digits}:1}
+        res="${res:0:index}$random_digit${res:index+1}"
+    done
+}
+
+if [ "$include_special" = true ]; then
+    handle_special_chars
+fi
+
+if [ "$include_uppercase" = true ]; then
+    handle_uppercase_chars
+fi
+
+if [ "$include_digits" = true ]; then
+    handle_digits
+fi
+
+echo "$res"
