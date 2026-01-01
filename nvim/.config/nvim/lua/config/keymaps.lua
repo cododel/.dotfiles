@@ -13,11 +13,10 @@ map("v", "<S-Y>", '"+y', {})
 map("n", "<S-P>", '"+p', {})
 
 -- Автоформат + сохранение по CTRL-s , как в нормальном, так и в insert режиме
+local conform = "lua require('conform').format({async=false, lsp_fallback=true})"
 local lsp_buf = "<Cmd>lua vim.lsp.buf"
-local lsp_format_command = lsp_buf .. ".format({async=false})<CR>"
-map("n", "<Leader>f", lsp_format_command, default_opts)
-map("n", "<C-s>", lsp_format_command .. ":w<CR>", default_opts)
-map("i", "<C-s>", "<Esc>" .. lsp_format_command .. ":w<CR>", default_opts)
+map("n", "<C-s>", "<Cmd>" .. conform .. "<CR>:w<CR>", default_opts)
+map("i", "<C-s>", "<Esc><Cmd>" .. conform .. "<CR>:w<CR>", default_opts)
 map("n", "<F2>", lsp_buf .. ".rename()<CR>", default_opts)
 
 map('n', 'gd', lsp_buf .. ".definition()<CR>", default_opts)

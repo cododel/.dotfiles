@@ -3,36 +3,38 @@ return {
   { "akinsho/bufferline.nvim", config = true },
   "nvim-telescope/telescope.nvim",
   "mbbill/undotree",
-  { "kyazdani42/nvim-tree.lua", config = true },
+  {
+    "kyazdani42/nvim-tree.lua",
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    config = function()
+      require("nvim-tree").setup({
+        sync_root_with_cwd = true,
+        respect_buf_cwd = true,
+        update_focused_file = {
+          enable = true,
+          update_root = true,
+        },
+        renderer = {
+          highlight_git = true,
+          icons = {
+            show = {
+              file = true,
+              folder = true,
+              folder_arrow = true,
+              git = true,
+            },
+          },
+        },
+      })
+    end,
+  },
+  "nvim-tree/nvim-web-devicons",
   "folke/trouble.nvim",
   "nvim-treesitter/nvim-treesitter",
   "powerman/vim-plugin-ruscmd",
   "sindrets/winshift.nvim",
   "tpope/vim-repeat",
   "goolord/alpha-nvim",
-  { 'windwp/nvim-autopairs',    event = "InsertEnter", config = true }
-
-
-
-  -- {
-  --   "windwp/nvim-ts-autotag",
-  --   dependencies = { "nvim-treesitter/nvim-treesitter" },
-  --   setup = {
-  --     opts = {
-  --       -- Defaults
-  --       enable_close = true,          -- Auto close tags
-  --       enable_rename = true,         -- Auto rename pairs of tags
-  --       enable_close_on_slash = false -- Auto close on trailing </
-  --     },
-  --     -- Also override individual filetype configs, these take priority.
-  --     -- Empty by default, useful if one of the "opts" global settings
-  --     -- doesn't work well in a specific filetype
-  --     per_filetype = {
-  --       ["html"] = {
-  --         enable_close = false
-  --       }
-  --     }
-  --   }
-  -- }
-
+  { 'windwp/nvim-autopairs',   event = "InsertEnter", config = true },
+  { "windwp/nvim-ts-autotag", config = true },
 }

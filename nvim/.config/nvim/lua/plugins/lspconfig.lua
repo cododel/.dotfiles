@@ -1,27 +1,35 @@
 return {
   "hrsh7th/cmp-nvim-lsp", -- LSP source for nvim-cmp
-  demendencies = {
+  dependencies = {
     "neovim/nvim-lspconfig"
   },
   config = function()
     local capabilities = require('cmp_nvim_lsp').default_capabilities()
-    local lspconfig = require('lspconfig')
+    local configs = require('lspconfig.configs')
 
-    -- HTML
-    lspconfig.emmet_ls.setup({ capabilities = capabilities })
+    -- Список серверов для стандартной настройки
+    local servers = {
+      "emmet_ls",
+      "eslint",
+      "ts_ls",
+      "svelte",
+      "jsonls",
+      "lua_ls",
+      "phpactor",
+      "ruff",
+    }
 
-    -- JS/TS
-    lspconfig.eslint.setup({ capabilities = capabilities })
-    lspconfig.ts_ls.setup({ capabilities = capabilities })
-    lspconfig.svelte.setup({ capabilities = capabilities })
-    lspconfig.jsonls.setup({ capabilities = capabilities })
+    for _, lsp in ipairs(servers) do
+      if configs[lsp] then
+        configs[lsp].setup({ capabilities = capabilities })
+      end
+    end
 
-    -- Python
-    lspconfig.basedpyright.setup({
-      capabilities = capabilities,
-      -- disable reportMissingTypeStubs
-      settings = {
-        {
+    -- Python (специфичная настройка)
+    if configs.basedpyright then
+      configs.basedpyright.setup({
+        capabilities = capabilities,
+        settings = {
           basedpyright = {
             analysis = {
               autoSearchPaths = true,
@@ -30,17 +38,8 @@ return {
             }
           }
         }
-      }
-    })
-    lspconfig.ruff.setup({ capabilities = capabilities })
-
-    -- Lua
-    lspconfig.lua_ls.setup({ capabilities = capabilities })
-
-    -- PHP
-    lspconfig.phpactor.setup({ capabilities = capabilities })
-
-
+      })
+    end
 
     return true
   end
