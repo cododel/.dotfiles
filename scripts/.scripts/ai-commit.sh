@@ -258,7 +258,17 @@ call_api() {
 }
 
 summarize_changes() {
-  local valid_scopes="{}"
+  local valid_scopes='{
+    "scopes": {
+      "core": {"desc": "Business logic"},
+      "cli": {"desc": "Command line interface"},
+      "workflow": {"desc": "CI/CD and automation"},
+      "dev-env": {"desc": "Development environment config"},
+      "deps": {"desc": "Dependencies"},
+      "docs": {"desc": "Documentation"},
+      "ui": {"desc": "Visual elements and themes"}
+    }
+  }'
   if [[ -f "$VALID_SCOPES_PATH" ]]; then
     valid_scopes=$(cat "$VALID_SCOPES_PATH")
   fi
@@ -282,6 +292,11 @@ JSON Structure:
   "why": "...",
   "style_hints": "..."
 }
+
+ENTITY PRESERVATION RULE:
+- NEVER "autocorrect" or rename libraries, packages, or plugins.
+- Use the EXACT casing and spelling found in the code or diff (e.g., "conform.nvim", "basedpyright", "ai-commit.sh").
+- If a word looks like a technical name (contains a dot, kebab-case, or CamelCase), treat it as a rigid proper noun.
 EOF
 )
 
@@ -334,9 +349,13 @@ Constraints for Gemini (The Generator):
    - Group minor config changes into a single bullet.
    - Final bullet should summarize secondary domains if they were excluded from the subject.
 5. NO PREAMBLE: Output ONLY the commit message.
-
+6. ENTITY PRESERVATION:
+   - NEVER "autocorrect" or rename libraries, packages, or plugins from the manifest.
+   - Use the EXACT casing and spelling provided in the "domains" or "change" fields.
+   - Example: If input says "conform.nvim", DO NOT write "Conduit" or "Conform".
 EOF
 )
+
 
 
   local payload=$(jq -n --arg p "$prompt" --arg s "$RAW_SUMMARY" --arg h "$HISTORY" --arg st "$DIFF_STAT_RAW" \
