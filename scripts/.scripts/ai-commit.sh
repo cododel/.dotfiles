@@ -10,7 +10,10 @@ VALID_SCOPES_PATH="${AI_COMMIT_SCOPES:-$CONFIG_DIR/valid-scopes.json}"
 
 # Default values
 MODEL_SUM="x-ai/grok-code-fast-1"
+MODEL_SUM_FAST="google/gemini-2.5-flash-lite"
 MODEL_GEN="google/gemini-2.5-flash-lite"
+FAST_MODE=false
+AUTO_FAST_THRESHOLD=40
 SPINNER_ENABLED=true
 CURSOR_HIDDEN=false
 DRY_RUN=false
@@ -59,18 +62,21 @@ Options:
   --config <path>     Use custom config file (default: $CONFIG_PATH)
   --model-sum <name>  Model for change summarization (default: $MODEL_SUM)
   --model-gen <name>  Model for commit generation (default: $MODEL_GEN)
-   --no-spinner        Disable animated spinner output
-   --no-progress       Disable all progress spinners and timing output
-   --dry-run           Print the message without committing
-   --copy              Copy the generated message to clipboard
-   --verbose           Print Grok output before generating commit
-   --help              Show this help message and exit
+  --fast, -f          Use fast summarization model (default: $MODEL_SUM_FAST)
+  --no-spinner        Disable animated spinner output
+  --no-progress       Disable all progress spinners and timing output
+  --dry-run           Print the message without committing
+  --copy              Copy the generated message to clipboard
+  --verbose           Print Grok output before generating commit
+  --help              Show this help message and exit
 
 
 Configuration file ($CONFIG_PATH):
   KEY=VALUE pairs, e.g.:
     MODEL_SUM=x-ai/grok-code-fast-1
-    MODEL_GEN=google/gemini-2.5-flash-lite
+    MODEL_SUM_FAST=google/gemini-2.0-flash-lite
+    MODEL_GEN=google/gemini-2.0-flash-lite
+    AUTO_FAST_THRESHOLD=40
     SPINNER_ENABLED=true
     HISTORY_LIMIT=20
     USE_HISTORY=true
@@ -88,7 +94,9 @@ load_config() {
     value=$(echo "$value" | xargs)
     case "$key" in
       MODEL_SUM) MODEL_SUM="$value" ;;
+      MODEL_SUM_FAST) MODEL_SUM_FAST="$value" ;;
       MODEL_GEN) MODEL_GEN="$value" ;;
+      AUTO_FAST_THRESHOLD) AUTO_FAST_THRESHOLD="$value" ;;
       SPINNER_ENABLED) [[ "$value" =~ ^(false|0|no)$ ]] && SPINNER_ENABLED=false || SPINNER_ENABLED=true ;;
       HISTORY_LIMIT) HISTORY_LIMIT="$value" ;;
       USE_HISTORY) [[ "$value" =~ ^(false|0|no)$ ]] && USE_HISTORY=false || USE_HISTORY=true ;;
@@ -179,6 +187,7 @@ parse_args() {
        --config) shift; CONFIG_PATH="$1" ;;
        --model-sum) shift; MODEL_SUM="$1" ;;
        --model-gen) shift; MODEL_GEN="$1" ;;
+       --fast|-f) FAST_MODE=true ;;
        --no-spinner|--no-progress) SPINNER_ENABLED=false ;;
        --dry-run) DRY_RUN=true ;;
        --copy) COPY_TO_CLIPBOARD=true ;;
@@ -319,7 +328,14 @@ EOF
   
   local payload_size=${#payload}
   local est_tokens=$((payload_size / 4))
-  call_api "$MODEL_SUM" "$payload" "🤖 Analyzing code structure (Grok) [~${est_tokens} tokens]"
+  local model_to_use="$MODEL_SUM"
+  local model_label="Grok"
+  if $FAST_MODE; then
+    model_to_use="$MODEL_SUM_FAST"
+    model_label="Fast Mode"
+  fi
+
+  call_api "$model_to_use" "$payload" "🤖 Analyzing code structure ($model_label) [~${est_tokens} tokens]"
   RAW_SUMMARY="$RESPONSE_CONTENT"
 
   if $VERBOSE; then
@@ -403,6 +419,17 @@ main() {
   parse_args "$@"
   require_command git
   capture_git_state
+
+  # Auto-fast mode based on diff size
+  local total_lines=0
+  if [[ -n "$SEMANTIC_WEIGHTS" ]]; then
+    total_lines=$(echo "$SEMANTIC_WEIGHTS" | jq '.logic_score + .config_score + .data_score' 2>/dev/null || echo 0)
+    if ! $FAST_MODE && [[ "$total_lines" =~ ^[0-9]+$ ]] && (( total_lines < AUTO_FAST_THRESHOLD )); then
+      FAST_MODE=true
+      echo "🚀 Small change detected ($total_lines lines), auto-enabling fast mode..." >&2
+    fi
+  fi
+
   summarize_changes
   echo "" >&2 # Clear line after spinner
   generate_commit

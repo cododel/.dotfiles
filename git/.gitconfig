@@ -9,4 +9,4 @@
 [pull]
 	rebase = false
 [alias]
-	ai-commit = "!~/.scripts/ai-commit.sh"
+  ai-commit = "!f() { ~/.scripts/ai-commit.sh \"$@\"; }; f"
