@@ -9,9 +9,9 @@ export GOPATH=$HOME/.go
 export PATH="$SCRIPTS:$PATH"
 
 export PATH="$HOME/Applications:$PATH"
+export PATH="$HOME/.miniconda3/bin:$PATH"
 export PATH="$HOME/.go/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
-export PATH="$HOME/.meteor:$PATH"
 export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"
 export PATH="/opt/homebrew/Cellar/libpq/15.1/bin:$PATH"
 export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
