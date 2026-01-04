@@ -8,9 +8,7 @@ end
 
 # pnpm
 set -gx PNPM_HOME "/Users/cododel/Library/pnpm"
-if not string match -q -- $PNPM_HOME $PATH
-  set -gx PATH "$PNPM_HOME" $PATH
-end
+fish_add_path $PNPM_HOME
 # pnpm end
 
 
@@ -31,7 +29,7 @@ else
     if test -f "/Users/cododel/.miniconda3/etc/fish/conf.d/conda.fish"
         . "/Users/cododel/.miniconda3/etc/fish/conf.d/conda.fish"
     else
-        set -x PATH "/Users/cododel/.miniconda3/bin" $PATH
+        fish_add_path "/Users/cododel/.miniconda3/bin"
     end
 end
 # <<< conda initialize <<<

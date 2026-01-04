@@ -1,1 +1,1 @@
-export PIPX_UV=1
+set -gx PIPX_UV 1

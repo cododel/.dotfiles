@@ -1,33 +1,36 @@
-export LC_ALL=en_US.UTF-8  
-export LANG=en_US.UTF-8
+set -gx LC_ALL en_US.UTF-8
+set -gx LANG en_US.UTF-8
 
-export EDITOR=/opt/homebrew/bin/nvim
-export REACT_EDITOR=cursor
-export SCRIPTS=$HOME/.scripts
-export GOPATH=$HOME/.go
+set -gx EDITOR /opt/homebrew/bin/nvim
+set -gx REACT_EDITOR cursor
+set -gx SCRIPTS $HOME/.scripts
+set -gx GOPATH $HOME/.go
 
-export PATH="$SCRIPTS:$PATH"
+# Path configuration
+fish_add_path $SCRIPTS
+fish_add_path $HOME/Applications
+fish_add_path $HOME/.miniconda3/bin
+fish_add_path $HOME/.go/bin
+fish_add_path $HOME/.local/bin
+fish_add_path --append /opt/homebrew/opt/python/libexec/bin
+fish_add_path /opt/homebrew/Cellar/libpq/15.1/bin
+fish_add_path /opt/homebrew/opt/libpq/bin
+fish_add_path $HOME/.composer/vendor/bin
+fish_add_path ./node_modules/.bin
 
-export PATH="$HOME/Applications:$PATH"
-export PATH="$HOME/.miniconda3/bin:$PATH"
-export PATH="$HOME/.go/bin:$PATH"
-export PATH="$HOME/.local/bin:$PATH"
-export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"
-export PATH="/opt/homebrew/Cellar/libpq/15.1/bin:$PATH"
-export PATH="/opt/homebrew/opt/libpq/bin:$PATH"
-export PATH="$HOME/.composer/vendor/bin:$PATH"
-export PATH="./node_modules/.bin:$PATH"
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-export PATH="$HOME/yandex-cloud/bin:$PATH"
-export PATH="/opt/local/bin:$PATH"
+set -gx BUN_INSTALL $HOME/.bun
+fish_add_path $BUN_INSTALL/bin
+fish_add_path $HOME/yandex-cloud/bin
+fish_add_path /opt/local/bin
 
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
+set -gx DOCKER_BUILDKIT 1
+set -gx COMPOSE_DOCKER_CLI_BUILD 1
 
-export GEM_HOME="$HOME/.gem"
-export PATH="$GEM_HOME/bin:$PATH"
-export GOOGLE_CLOUD_PROJECT="gen-lang-client-0503296622"
+set -gx GEM_HOME $HOME/.gem
+fish_add_path $GEM_HOME/bin
+set -gx GOOGLE_CLOUD_PROJECT "gen-lang-client-0503296622"
 
-#source ~/.docker/init-zsh.sh || true # Added by Docker Desktop
-eval "$(/opt/homebrew/bin/brew shellenv)"
+# Homebrew environment
+if test -f /opt/homebrew/bin/brew
+    eval (/opt/homebrew/bin/brew shellenv)
+end
