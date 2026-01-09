@@ -10,8 +10,8 @@ VALID_SCOPES_PATH="${AI_COMMIT_SCOPES:-$CONFIG_DIR/valid-scopes.json}"
 
 # Default values
 MODEL_SUM="x-ai/grok-code-fast-1"
-MODEL_SUM_FAST="google/gemini-2.5-flash-lite"
-MODEL_GEN="google/gemini-2.5-flash-lite"
+MODEL_SUM_FAST="google/gemini-2.5-flash"
+MODEL_GEN="xiaomi/mimo-v2-flash:free"
 FAST_MODE=false
 AUTO_FAST_THRESHOLD=40
 SPINNER_ENABLED=true
@@ -33,6 +33,8 @@ HISTORY=""
 SEMANTIC_WEIGHTS=""
 RAW_SUMMARY=""
 RESPONSE=""
+SCOPES_JSON=""
+STRICT_SCOPES=false
 
 require_command() {
   local cmd=$1
@@ -67,7 +69,7 @@ Options:
   --no-progress       Disable all progress spinners and timing output
   --dry-run           Print the message without committing
   --copy              Copy the generated message to clipboard
-  --verbose           Print Grok output before generating commit
+  --verbose           Print summarizer output before generating commit
   --help              Show this help message and exit
 
 
@@ -269,8 +271,9 @@ call_api() {
   RESPONSE_CONTENT=$(cat "$response_file")
 }
 
-summarize_changes() {
-  local valid_scopes='{
+resolve_scopes() {
+  # Default fallback if no file exists
+  SCOPES_JSON='{
     "scopes": {
       "core": {"desc": "Business logic"},
       "cli": {"desc": "Command line interface"},
@@ -281,12 +284,21 @@ summarize_changes() {
       "ui": {"desc": "Visual elements and themes"}
     }
   }'
+  
   if [[ -f "$VALID_SCOPES_PATH" ]]; then
-    valid_scopes=$(cat "$VALID_SCOPES_PATH")
+    SCOPES_JSON=$(cat "$VALID_SCOPES_PATH")
   fi
-  # Local project scope discovery
+
   if [[ -f ".ai-commit-scopes.json" ]]; then
-    valid_scopes=$(cat ".ai-commit-scopes.json")
+    SCOPES_JSON=$(cat ".ai-commit-scopes.json")
+    STRICT_SCOPES=true
+  fi
+}
+
+summarize_changes() {
+  local scope_constraint="1. You MUST use the provided \"valid_scopes\" to categorize the change."
+  if ! $STRICT_SCOPES; then
+    scope_constraint="1. You SHOULD prefer the provided \"valid_scopes\", but MAY use a project-specific kebab-case scope if none fit perfectly."
   fi
 
   local prompt=$(cat <<EOF
@@ -294,7 +306,7 @@ You are a Technical Architect. Analyze the git diff and metadata.
 Produce a "Functional Manifest" as a minified JSON object.
 
 Constraints:
-1. You MUST use the provided "valid_scopes" to categorize the change.
+${scope_constraint}
 2. If multiple domains exist, identify the "primary_scope" based on the "semantic_weights" (Logic > Config).
 3. If changes are disjoint, suggest an "umbrella_scope" from the valid list.
 4. LOGIC BIAS: If ANY executable script (.sh, .py, .js, .lua, .ts) is modified, it MUST be listed as its own separate DOMAIN in the "domains" array. ALWAYS assign these logic domains a weight of 50 or higher.
@@ -322,14 +334,14 @@ EOF
     --rawfile ds "$STATUS_FILE" \
     --rawfile dn "$NUMSTAT_FILE" \
     --rawfile dss "$SUMMARY_FILE" \
-    --argjson vs "$valid_scopes" \
+    --argjson vs "$SCOPES_JSON" \
     --argjson sw "$SEMANTIC_WEIGHTS" \
     '{instruction:$p, context:{diff_compact:$dc, diff_status:$ds, diff_numstat:$dn, diff_stat_summary:$dss, valid_scopes:$vs, semantic_weights:$sw}}')
   
   local payload_size=${#payload}
   local est_tokens=$((payload_size / 4))
   local model_to_use="$MODEL_SUM"
-  local model_label="Grok"
+  local model_label="$MODEL_SUM"
   if $FAST_MODE; then
     model_to_use="$MODEL_SUM_FAST"
     model_label="Fast Mode"
@@ -354,7 +366,7 @@ Generate a Conventional Commit message based on the provided JSON "technical_man
 Format: <type>(<scope>): <subject>
 [optional body]
 
-Constraints for Gemini (The Generator):
+Constraints for Generator:
 1. SCOPE SELECTION:
    - You MUST use the "primary_scope" value from the technical_manifest. 
    - NEVER combine different domain names into a single scope.
@@ -389,10 +401,10 @@ EOF
   
   local payload_size=${#payload}
   local est_tokens=$((payload_size / 4))
-  call_api "$MODEL_GEN" "$payload" "✍️  Formatting commit message (Gemini) [~${est_tokens} tokens]"
+  call_api "$MODEL_GEN" "$payload" "✍️  Formatting commit message ($MODEL_GEN) [~${est_tokens} tokens]"
   RESPONSE="$RESPONSE_CONTENT"
   if [[ -z "$RESPONSE" ]]; then
-    echo "❌ Error: Gemini returned empty response." >&2
+    echo "❌ Error: $MODEL_GEN returned empty response." >&2
   fi
 }
 
@@ -417,6 +429,7 @@ validate_response() {
 main() {
   load_config
   parse_args "$@"
+  resolve_scopes
   require_command git
   capture_git_state
 
@@ -446,11 +459,12 @@ main() {
   fi
 
   # Scope Validation
-  if [[ -f "$VALID_SCOPES_PATH" ]]; then
-    local current_scope=$(echo "$CLEAN_RESPONSE" | sed -n 's/^[a-z]*(\([^)]*\)):.*/\1/p')
-    if [[ -n "$current_scope" ]]; then
-      if ! jq -e --arg s "$current_scope" '.scopes | has($s)' "$VALID_SCOPES_PATH" >/dev/null 2>&1; then
-        echo "⚠️  Warning: Invalid scope '$current_scope' detected. Prepending [REVIEW]." >&2
+  local current_scope=$(echo "$CLEAN_RESPONSE" | sed -n 's/^[a-z]*(\([^)]*\)):.*/\1/p')
+  if [[ -n "$current_scope" ]]; then
+    if ! jq -e --arg s "$current_scope" '.scopes | has($s)' <<< "$SCOPES_JSON" >/dev/null 2>&1; then
+      echo "⚠️  Warning: Scope '$current_scope' is not in the valid list." >&2
+      if $STRICT_SCOPES; then
+        echo "🛡️  Strict mode: Prepending [REVIEW]." >&2
         CLEAN_RESPONSE="[REVIEW] $CLEAN_RESPONSE"
       fi
     fi
