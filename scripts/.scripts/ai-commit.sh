@@ -9,8 +9,8 @@ STATS_PATH="${AI_COMMIT_STATS:-$CONFIG_DIR/stats.json}"
 VALID_SCOPES_PATH="${AI_COMMIT_SCOPES:-$CONFIG_DIR/valid-scopes.json}"
 
 # Default values
-MODEL_SUM="x-ai/grok-code-fast-1"
-MODEL_SUM_FAST="google/gemini-2.5-flash"
+MODEL_SUM="xiaomi/mimo-v2-flash:free"
+MODEL_SUM_FAST="xiaomi/mimo-v2-flash:free"
 MODEL_GEN="xiaomi/mimo-v2-flash:free"
 FAST_MODE=false
 AUTO_FAST_THRESHOLD=40
@@ -90,10 +90,16 @@ EOF
 
 load_config() {
   [[ ! -f "$CONFIG_PATH" ]] && return
-  while IFS='=' read -r key value; do
-    [[ -z "$key" || "$key" =~ ^\s*# ]] && continue
-    key=$(echo "$key" | tr '[:lower:]' '[:upper:]' | xargs)
-    value=$(echo "$value" | xargs)
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+    
+    # Trim whitespace and normalize key
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    key="${key^^}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    
     case "$key" in
       MODEL_SUM) MODEL_SUM="$value" ;;
       MODEL_SUM_FAST) MODEL_SUM_FAST="$value" ;;
@@ -137,13 +143,13 @@ analyze_diff_semantics() {
     [[ "$deleted" == "-" ]] && deleted=0
     
     case "$file" in
-      *.sh|*.js|*.py|*.lua|*.ts|*.go|*.rs|*.c|*.cpp|*.h)
+      *.sh|*.js|*.py|*.lua|*.ts|*.tsx|*.jsx|*.go|*.rs|*.c|*.cpp|*.h|*.hpp|*.swift|*.kt|*.java|*.rb|*.php)
         logic_score=$((logic_score + added + deleted))
         ;;
-      *.json|*.yaml|*.yml|*.toml|*.conf|*rc)
+      *.json|*.yaml|*.yml|*.toml|*.conf|*rc|*.xml|*.gradle|*.props)
         config_score=$((config_score + added + deleted))
         ;;
-      *.lock|*.md|*.txt)
+      *.lock|*.md|*.txt|*.svg|*.png|*.jpg|*.jpeg)
         data_score=$((data_score + added + deleted))
         ;;
       *)
@@ -202,17 +208,36 @@ parse_args() {
 
 }
 
+compress_diff() {
+  # Compresses consecutive deleted lines in git diff to save tokens.
+  # Keeps up to 2 deleted lines, then summarizes.
+  awk '
+    /^-/ && !/^--- / {
+      count++
+      if (count <= 2) print $0
+      next
+    }
+    {
+      if (count > 2) printf "--- [%d lines deleted]\n", count
+      count = 0
+      print $0
+    }
+    END { if (count > 2) printf "--- [%d lines deleted]\n", count }
+  '
+}
+
 capture_git_state() {
   DIFF_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-diff.XXXXXX")
+  local RAW_DIFF_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-diff-raw.XXXXXX")
   STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-status.XXXXXX")
   NUMSTAT_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-numstat.XXXXXX")
   STAT_RAW_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-stat-raw.XXXXXX")
   SUMMARY_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-summary.XXXXXX")
   HISTORY_FILE=$(mktemp "${TMPDIR:-/tmp}/ai-commit-history.XXXXXX")
-  TMP_ITEMS+=("$DIFF_FILE" "$STATUS_FILE" "$NUMSTAT_FILE" "$STAT_RAW_FILE" "$SUMMARY_FILE" "$HISTORY_FILE")
+  TMP_ITEMS+=("$DIFF_FILE" "$RAW_DIFF_FILE" "$STATUS_FILE" "$NUMSTAT_FILE" "$STAT_RAW_FILE" "$SUMMARY_FILE" "$HISTORY_FILE")
 
   # Compact diff with minimal context and no space noise
-  git diff --cached -U1 --no-prefix --ignore-space-change > "$DIFF_FILE" &
+  git diff --cached -U1 --no-prefix --ignore-space-change > "$RAW_DIFF_FILE" &
   local p1=$!
   # File status (A, M, D, R...)
   git diff --cached --name-status > "$STATUS_FILE" &
@@ -234,10 +259,13 @@ capture_git_state() {
 
   wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"
 
-  if [[ ! -s "$DIFF_FILE" && ! -s "$STATUS_FILE" ]]; then
+  if [[ ! -s "$RAW_DIFF_FILE" && ! -s "$STATUS_FILE" ]]; then
     echo "⚠️  No staged changes to commit." >&2
     exit 0
   fi
+
+  # Compress deleted lines to save tokens
+  compress_diff < "$RAW_DIFF_FILE" > "$DIFF_FILE"
 
   DIFF_COMPACT=$(<"$DIFF_FILE")
   DIFF_STATUS=$(<"$STATUS_FILE")
@@ -266,7 +294,11 @@ call_api() {
   "$helper" --model "$model" "$payload" > "$response_file" &
   local pid=$!
   spinner "$pid" "$msg"
-  wait "$pid" || true
+  if ! wait "$pid"; then
+    echo "❌ Error: API request failed." >&2
+    update_stats failure
+    exit 1
+  fi
   
   RESPONSE_CONTENT=$(cat "$response_file")
 }
@@ -411,19 +443,19 @@ EOF
 
 validate_response() {
   local cleaned="$1"
-  # Remove markdown code blocks
-  cleaned=$(echo "$cleaned" | sed -e '/^```/d' -e '/^```.*$/d')
-  # Remove preambles like "Here is the commit message:"
-  cleaned=$(echo "$cleaned" | sed -e '/^[Hh]ere is/d' -e '/^[Cc]ommit message/d')
-  # Remove leading/trailing whitespace and quotes
-  cleaned=$(echo "$cleaned" | sed -e 's/^[[:space:]"'\''`]*//' -e 's/[[:space:]"'\''`]*$//')
+  # Clean markdown, preambles, and extra whitespace/quotes in one pass
+  CLEAN_RESPONSE=$(echo "$cleaned" | sed -E \
+    -e '/^```/d' \
+    -e '/^[Hh]ere is/d' \
+    -e '/^[Cc]ommit message/d' \
+    -e 's/^[[:space:]"'\''`]*//' \
+    -e 's/[[:space:]"'\''`]*$//')
   
-  if [[ -z "$cleaned" ]]; then
+  if [[ -z "$CLEAN_RESPONSE" ]]; then
     echo "❌ Error: Received empty message after processing."
     update_stats failure
     exit 1
   fi
-  CLEAN_RESPONSE="$cleaned"
 }
 
 main() {
@@ -431,6 +463,8 @@ main() {
   parse_args "$@"
   resolve_scopes
   require_command git
+  require_command jq
+  require_command tput
   capture_git_state
 
   # Auto-fast mode based on diff size
@@ -477,6 +511,9 @@ main() {
   if $COPY_TO_CLIPBOARD; then
     if command -v pbcopy >/dev/null 2>&1; then
       echo "$CLEAN_RESPONSE" | pbcopy
+      echo "📋 Message copied to clipboard."
+    elif command -v wl-copy >/dev/null 2>&1; then
+      echo "$CLEAN_RESPONSE" | wl-copy
       echo "📋 Message copied to clipboard."
     elif command -v xclip >/dev/null 2>&1; then
       echo "$CLEAN_RESPONSE" | xclip -selection clipboard
