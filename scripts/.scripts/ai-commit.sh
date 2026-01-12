@@ -9,9 +9,9 @@ STATS_PATH="${AI_COMMIT_STATS:-$CONFIG_DIR/stats.json}"
 VALID_SCOPES_PATH="${AI_COMMIT_SCOPES:-$CONFIG_DIR/valid-scopes.json}"
 
 # Default values
-MODEL_SUM="xiaomi/mimo-v2-flash:free"
-MODEL_SUM_FAST="xiaomi/mimo-v2-flash:free"
-MODEL_GEN="xiaomi/mimo-v2-flash:free"
+MODEL_SUM="google/gemini-3-flash-preview"
+MODEL_SUM_FAST="google/gemini-3-flash-preview"
+MODEL_GEN="google/gemini-3-flash-preview"
 FAST_MODE=false
 AUTO_FAST_THRESHOLD=40
 SPINNER_ENABLED=true
