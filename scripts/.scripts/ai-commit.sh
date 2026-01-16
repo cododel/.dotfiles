@@ -253,11 +253,15 @@ capture_git_state() {
   local p5=$!
 
   if $USE_HISTORY; then
-    git log -"$HISTORY_LIMIT" --oneline > "$HISTORY_FILE" &
+    if git rev-parse --verify HEAD >/dev/null 2>&1; then
+      git log -"$HISTORY_LIMIT" --oneline > "$HISTORY_FILE" &
+    else
+      : > "$HISTORY_FILE" &
+    fi
   fi
   local p6=$!
 
-  wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"
+  wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6" || true
 
   if [[ ! -s "$RAW_DIFF_FILE" && ! -s "$STATUS_FILE" ]]; then
     echo "⚠️  No staged changes to commit." >&2
@@ -465,6 +469,12 @@ main() {
   require_command git
   require_command jq
   require_command tput
+
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "❌ Error: Not a git repository." >&2
+    exit 1
+  fi
+
   capture_git_state
 
   # Auto-fast mode based on diff size
