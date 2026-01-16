@@ -9,5 +9,5 @@
 [pull]
 	rebase = false
 [alias]
-  ai-commit = "!f() { ~/.scripts/ai-commit.sh \"$@\"; }; f"
+  ai-commit = "!f() { ~/.scripts/ai-commit \"$@\"; }; f"
   gitroot = rev-parse --show-toplevel                     
