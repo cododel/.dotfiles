@@ -117,9 +117,7 @@ function handle_uppercase_chars() {
 }
 
 function handle_digits() {
-    local chance=1/10
-
-    local num_digits_replacements=$((length * chance))
+    local num_digits_replacements=$((length / 10))
     if [ "$num_digits_replacements" -eq 0 ]; then
         num_digits_replacements=1
     fi
