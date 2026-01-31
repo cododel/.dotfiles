@@ -28,7 +28,6 @@ set -gx COMPOSE_DOCKER_CLI_BUILD 1
 
 set -gx GEM_HOME $HOME/.gem
 fish_add_path $GEM_HOME/bin
-set -gx GOOGLE_CLOUD_PROJECT "gen-lang-client-0503296622"
 
 # Homebrew environment
 if test -f /opt/homebrew/bin/brew

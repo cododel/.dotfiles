@@ -1,6 +1,14 @@
 [user]
 	email = websmithcode@gmail.com
 	name = cododel
+  signingkey = ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDbgVKQwGLoG8E8pvsPzWIGIH7vsqR3ZsDEkGZXuwV+K1jPaXXo0ZrKi4EnTGqcqRZ+E0odO9vJydmDmjNlHcxS9arZXBznZXvDsQ23g1sX/H+pczil9niZsVdrKiAgRQDyYnSY7drcdXVfoEpAK0QgvykO0eO/GdiS/BpcJ2SHlWKt4fLH6c9jKlzwV80lDSI1j83Y5wUebeC53PT744zsT9slyvlfFVZK0+DB0PcLk0Zz+3g0qA6XXr060qG0+D8nLaaeJ7sS/Be96X1EpCyw9BPPZ6d3l3Tm1YQ9XpHLGV/iDLjgst6wQwBczCTI60qgjBt25uZgo7yC754c9Bgz/lrzVICQS4Bsc19IHjUrOmzyX8U0VdFpZSA86XFRYi/y8k71mGd5o+3str6l+YORG2IR409yZjGPBNrXzGV8yfalOIWFM3axUIOY03+Lpv4cFS0pkUKIUw2R34pjYmEkB8QgABP0ULvPPAKxzjdDM6g3t1YSCtj61Mmh0059Pw8=
+
+[gpg]
+  format = ssh
+
+[gpg "ssh"]
+  program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
+
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
@@ -8,6 +16,9 @@
 	required = true
 [pull]
 	rebase = false
+[commit]
+  gpgsign = true
 [alias]
   ai-commit = "!f() { ~/.scripts/ai-commit \"$@\"; }; f"
   gitroot = rev-parse --show-toplevel                     
+
