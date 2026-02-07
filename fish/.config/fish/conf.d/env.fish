@@ -9,7 +9,7 @@ set -gx GOPATH $HOME/.go
 # Path configuration
 fish_add_path $SCRIPTS
 fish_add_path $HOME/Applications
-fish_add_path $HOME/.miniconda3/bin
+
 fish_add_path $HOME/.go/bin
 fish_add_path $HOME/.local/bin
 fish_add_path --append /opt/homebrew/opt/python/libexec/bin
